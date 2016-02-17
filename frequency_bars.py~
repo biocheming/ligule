@@ -1,0 +1,7 @@
+""" Samuel D. Lotz - Lab of Dr. Alex Dickson - Michigan State
+University 2015-2-16
+
+This script takes multiple 1D arrays, DataFrames, or lists of all the
+same size and makes a bar plot corresponding to the numbers in the
+arrays.
+"""

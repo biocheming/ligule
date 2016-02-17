@@ -72,7 +72,4 @@ for traj in trajs:
     pairs_df['contacts'] = pairs_df['contacts'] + num_contacts
 
 # write the dataframe to a file
-contacts = pairs_df['contacts']
-contacts.index.name = "Residue Index"
-contacts.name = ligand_name
-contacts.to_csv(output_f, index=True)
+pairs_df.to_csv(output_f, index=False)

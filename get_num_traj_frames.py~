@@ -1,0 +1,14 @@
+""" Samuel D. Lotz - Lab of Dr. Alex Dickson - Michigan State
+University 2015-2-16
+
+
+
+"""
+
+import mdtraj as md
+
+# the file the final data will be output to as csv format
+output_f = sys.argv[1]
+
+# the trajectories to count for
+trajs = [dcd for dcd in sys.argv[6:]]

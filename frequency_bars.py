@@ -17,3 +17,6 @@ import pandas as pd
 
 # the frequencies for the bar chart
 df = pd.concat(sys.argv[1:], axis=1)
+
+# plot them
+df.plot(kind='bar')

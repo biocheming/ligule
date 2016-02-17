@@ -1,0 +1,55 @@
+If I am given a number of trajectories for the same system with
+different numbers of frames in each e.g.:
+
+#+NAME: but
+| trajectory | frames |
+|------------+--------|
+|          0 | 3650   |
+|          1 | 3674   |
+|          2 | 3679   |
+|          3 | 3678   |
+|          4 | 3688   |
+|          5 | 3672   |
+|          6 | 3670   |
+|          7 | 3680   | 
+
+#+NAME: dmso
+| trajectory | frames |
+|------------+--------|
+|          0 |   6007 |
+|          1 |   6007 |
+|          2 |   6009 |
+|          3 |   6007 |
+|          4 |   6005 |
+|          5 |   6007 |
+|          6 |   6007 |
+|          7 |   6007 |
+
+#+NAME: dss
+| trajectory | frames |
+|------------+--------|
+|          0 |   8884 |
+|          1 |   9086 |
+|          2 |   8839 |
+|          3 |   9106 |
+|          4 |   2890 |
+|          5 |   9028 |
+|          6 |   8994 |
+|          7 |   9028 |
+
+As in "dss" trajectory 4 we see that it has significantly less frames
+due to an unresponsive GPU during computation. The work that should
+have been done on that one was given to other GPUs to compute and was
+added to the other trajectories.
+
+1) We have to decide first what the number of frames to take between
+each system is.
+
+2) How to get back the redistributed simulation frames lost from any
+   trajectory by taking evenly from other trajectories in the same
+   system.
+
+If we simply take the smallest number of frames for a system we might
+get an abandoned one. So we should look to the median for guidance.
+
+        
