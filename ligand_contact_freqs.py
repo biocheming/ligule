@@ -27,17 +27,17 @@ topo_path = sys.argv[4]
 # the number of frames to count contacts for i.e. traj[0:frames] pass
 # 'all' if to use all frames, provide the number of frames you want
 # from each trajectory
-frames = [int(f) for f in sys.argv[5].split(',')]
+nframes = [int(f) for f in sys.argv[5].split(',')]
 
 # the trajectories to count for
 traj_paths = [dcd for dcd in sys.argv[6:]]
 
 # expand frames slice to others if only one is given
-if len(frames) == 1:
-    frames = [int(frames[0]) for f in range(len(traj_paths))]
+if len(nframes) == 1:
+    nframes = [int(nframes[0]) for f in range(len(traj_paths))]
 
 # check to make sure that the correct number of frames were given
-if len(frames) != len(traj_paths):
+if len(nframes) != len(traj_paths):
     raise ValueError, "Wrong number of frame slices for trajectories given"
 
 # define the non-protein heteroatoms
@@ -67,9 +67,9 @@ for i, traj_name in enumerate(traj_paths):
     # load the trajectory file using the associated topology file
     traj = md.load(traj_name, top=topo)
     # use only the specified frames
-    if frames[i] != 'all':
+    if nframes[i] != 'all':
         try:
-            traj = traj[0:frames[i]]
+            traj = traj[0:nframes[i]]
         except IndexError:
             print "Trajectory has fewer frames than queried, using all frames"
         

@@ -1,0 +1,135 @@
+from __future__ import print_function
+import click
+
+# reference data section
+HETERO_ATOMS = ['HOH','CLA','CAL']
+
+# the command subgroup
+@click.group()
+def ligandmap():
+    pass
+
+# the contact frequency command
+@click.command()
+@click.option('--output', default=None, help="file path to save contact frequency output")
+@click.option('--cutoff', default=0.6, type=float, help="pairwise protein residue-ligand distances under this cutoff (in nm) counted as in contact")
+@click.option('--nframes', default='all', type=str, help="list of the number of frames to take from the respective trajectories use 'all' to get all frames if only one is given with multiple trajectories it is used for all trajectories, e.g. 1500 or all or 1000,all,all, default is 'all' ")
+@click.option('--hetatoms', default=','.join(HETERO_ATOMS), help="list of non-protein heteroatom codes not including the ligand, e.g. 'HOH,CLA', default={0}".format(','.join(HETERO_ATOMS))
+@click.option('--plot', is_flag=True, help="produce a matplotlib bar chart of the frequencies")
+@click.option('--weights', default=None, type=click.Path(exists=True), help="")
+@click.argument('ligand', nargs=1, type=str, help="code of ligand residue in topology file")
+@click.argument('topology', nargs=1, type=click.Path(exists=True), help="path to the topology file e.g. *.pdb")
+@click.argument('traj_paths', nargs=-1, type=click.Path(exists=True), help="paths to trajectory files e.g. *.dcd")
+def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topology, traj_paths):
+    import mdtraj as md
+    import numpy as np
+    import pandas as pd
+    import itertools as it
+    import sys
+    # rename parameters
+    ligand_code = str(ligand)
+    del ligand
+    topo_path = topology
+    del topology
+
+    # load the number of frames list and convert integer string to
+    # ints unless its value is 'all'
+    tmp = []
+    for nframe in nframes.split(','):
+        try:
+            tmp.append(int(nframe))
+        except ValueError:
+            if nframe == 'all':
+                tmp.append(nframe)
+            else:
+                raise
+    nframes = tmp
+    del tmp
+
+    # expand frames slice to others if only one is given
+    if len(nframes) == 1:
+        nframes = [nframes[0] for f in range(len(traj_paths))]
+    # check to make sure that the correct number of frames were given
+    if len(nframes) != len(traj_paths):
+        raise ValueError, "Wrong number of frame slices for trajectories given"
+
+    # read in the heteroatoms to a list
+    hetero_atoms = [str(het) for het in hetatoms.split(',')]
+    # add the ligand to the heteroatoms
+    hetero_atoms.append(ligand_code)
+    
+    # load the topology
+    topo = md.load(topo_path).top
+    # load into dataframe
+    traj_df, traj_bonds = topo.to_dataframe()
+    # get the dataframe of the ligand residue if it is in the topology
+    try:
+        if ligand_code not in traj_df['resName'].values:
+            raise ValueError
+    except ValueError:
+        sys.exit("supplied ligand code, '{0}', is not in the topology".format(ligand_code))
+
+    lig_df = traj_df[traj_df['resName'] == ligand_code]
+    # get the unique residue indices
+    lig_res_ix = np.unique(np.array(lig_df['resSeq']))
+    # get the dataframe of the protein residues
+    prot_df = traj_df[~traj_df['resName'].isin(hetero_atoms)]
+    # get the unique residue indices
+    prot_res_ix = np.unique(np.array(prot_df['resSeq']))
+    # make the product (pairwise combinations of each iterable of indices
+    pairs_ix = np.array([[i[0], i[1]] for i in it.product(prot_res_ix, lig_res_ix)])
+    # dataframe for tabulating number of times a pair is within the cutoff, a contact
+    pairs_df = pd.DataFrame(pairs_ix)
+    # add a column for number of contacts below cutoff and set to zero
+    pairs_df['contacts'] = 0
+
+    # go through each trajectory and count the contacts 
+    for i, traj_name in enumerate(traj_paths):
+        # load the trajectory file using the associated topology file
+        traj = md.load(traj_name, top=topo)
+        # use only the specified frames
+        if nframes[i] != 'all':
+            try:
+                traj = traj[0:nframes[i]]
+            except IndexError:
+                click.echo("Trajectory has fewer frames than queried, using all frames")
+
+        # then compute contacts using the residue indices
+        contact_dist, p = md.compute_contacts(traj, contacts=pairs_ix, scheme="closest-heavy")
+        del p
+        # go through these and sum up how many were below the cutoff
+        num_contacts = []
+        for col_i in range(contact_dist.shape[1]):
+            col = contact_dist[:,col_i]
+            num_contacts.append(np.where(col < cutoff)[0].shape[0])
+        # add the new contacts to the pairs DataFrame values
+        pairs_df['contacts'] = pairs_df['contacts'] + num_contacts
+
+    # set contacts dataframe metadata
+    contacts = pairs_df['contacts']
+    contacts.index.name = "Residue Index"
+    contacts.name = ligand_code
+
+    # try to make output if desired
+    if output:
+        try:
+            contacts.to_csv(output, index=True, index_label="Residue Index", header=True)
+        except IOError as e:
+            click.echo("Bad output path {0}".format(e))
+
+    # if not send to stdout
+    if output is None:
+        click.echo("Not writing output")
+        sys.stdout.write(contacts.to_string())
+        sys.stdout.write("\n")
+    
+    # plotting
+    if plot == True:
+        click.echo("Plotting not implemented yet")
+
+    return contacts
+
+
+ligandmap.add_command(contact_freqs)
+if __name__ == "__main__":
+    ligandmap()
