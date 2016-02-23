@@ -6,20 +6,21 @@ HETERO_ATOMS = ['HOH','CLA','CAL']
 
 # the command subgroup
 @click.group()
-def ligandmap():
+def cli():
     pass
 
 # the contact frequency command
+#
 @click.command()
 @click.option('--output', default=None, help="file path to save contact frequency output")
 @click.option('--cutoff', default=0.6, type=float, help="pairwise protein residue-ligand distances under this cutoff (in nm) counted as in contact")
 @click.option('--nframes', default='all', type=str, help="list of the number of frames to take from the respective trajectories use 'all' to get all frames if only one is given with multiple trajectories it is used for all trajectories, e.g. 1500 or all or 1000,all,all, default is 'all' ")
-@click.option('--hetatoms', default=','.join(HETERO_ATOMS), help="list of non-protein heteroatom codes not including the ligand, e.g. 'HOH,CLA', default={0}".format(','.join(HETERO_ATOMS))
+@click.option('--hetatoms', default=','.join(HETERO_ATOMS), help="list of non-protein heteroatom codes not including the ligand, e.g. 'HOH,CLA', default={0}".format(','.join(HETERO_ATOMS)))
 @click.option('--plot', is_flag=True, help="produce a matplotlib bar chart of the frequencies")
 @click.option('--weights', default=None, type=click.Path(exists=True), help="")
-@click.argument('ligand', nargs=1, type=str, help="code of ligand residue in topology file")
-@click.argument('topology', nargs=1, type=click.Path(exists=True), help="path to the topology file e.g. *.pdb")
-@click.argument('traj_paths', nargs=-1, type=click.Path(exists=True), help="paths to trajectory files e.g. *.dcd")
+@click.argument('ligand', nargs=1, type=str)
+@click.argument('topology', nargs=1, type=click.Path(exists=True))
+@click.argument('traj_paths', nargs=-1, type=click.Path(exists=True))
 def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topology, traj_paths):
     import mdtraj as md
     import numpy as np
@@ -105,6 +106,9 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topo
         # add the new contacts to the pairs DataFrame values
         pairs_df['contacts'] = pairs_df['contacts'] + num_contacts
 
+
+    # apply weights if supplied
+    
     # set contacts dataframe metadata
     contacts = pairs_df['contacts']
     contacts.index.name = "Residue Index"
@@ -130,6 +134,6 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topo
     return contacts
 
 
-ligandmap.add_command(contact_freqs)
+cli.add_command(contact_freqs)
 if __name__ == "__main__":
-    ligandmap()
+    cli()

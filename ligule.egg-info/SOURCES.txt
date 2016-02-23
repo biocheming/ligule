@@ -1,0 +1,7 @@
+ligule.py
+ligule.egg-info/PKG-INFO
+ligule.egg-info/SOURCES.txt
+ligule.egg-info/dependency_links.txt
+ligule.egg-info/entry_points.txt
+ligule.egg-info/requires.txt
+ligule.egg-info/top_level.txt
