@@ -17,11 +17,13 @@ def cli():
 @click.option('--nframes', default='all', type=str, help="list of the number of frames to take from the respective trajectories use 'all' to get all frames if only one is given with multiple trajectories it is used for all trajectories, e.g. 1500 or all or 1000,all,all, default is 'all' ")
 @click.option('--hetatoms', default=','.join(HETERO_ATOMS), help="list of non-protein heteroatom codes not including the ligand, e.g. 'HOH,CLA', default={0}".format(','.join(HETERO_ATOMS)))
 @click.option('--plot', is_flag=True, help="produce a matplotlib bar chart of the frequencies")
-@click.option('--weights', default=None, type=click.Path(exists=True), help="")
+@click.option('--weights', default=None, type=str, help="paths to the weights files e.g. /path/1.dat,/path/2.dat")
+@click.option('--byRes', 'by_particle', flag_value="residue", default=True, help="output contacts on a residue basis")
+@click.option('--byAtom', 'by_particle', flag_value="atom", default=False, help="output contacts on an atom basis")
 @click.argument('ligand', nargs=1, type=str)
 @click.argument('topology', nargs=1, type=click.Path(exists=True))
 @click.argument('traj_paths', nargs=-1, type=click.Path(exists=True))
-def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topology, traj_paths):
+def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle, ligand, topology, traj_paths):
     import mdtraj as md
     import numpy as np
     import pandas as pd
@@ -32,6 +34,16 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topo
     del ligand
     topo_path = topology
     del topology
+    weight_paths = weights
+    del weights
+
+
+    print(by_particle)
+    # parse the weights option if given
+    if weight_paths:
+        tmp = [weight_path for weight_path in weight_paths.split(',')]
+        weight_paths = tmp
+        del tmp
 
     # load the number of frames list and convert integer string to
     # ints unless its value is 'all'
@@ -106,9 +118,13 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topo
         # add the new contacts to the pairs DataFrame values
         pairs_df['contacts'] = pairs_df['contacts'] + num_contacts
 
+        # apply weights if supplied
+        if weight_paths:
+            # load weights file from option
+            weights = pd.read_csv(weight_paths[i], header=None)
+            # multiply counts of contacts by weights
+            pairs_df['contacts'] = pairs_df['contacts'] * weights[0]
 
-    # apply weights if supplied
-    
     # set contacts dataframe metadata
     contacts = pairs_df['contacts']
     contacts.index.name = "Residue Index"
@@ -133,6 +149,11 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, ligand, topo
 
     return contacts
 
+
+def WExplore_weights_reader(weights_path, chunk_size):
+    import pandas as pd
+
+    return pd.read_csv(weights_path)
 
 cli.add_command(contact_freqs)
 if __name__ == "__main__":

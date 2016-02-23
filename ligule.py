@@ -9,6 +9,20 @@ HETERO_ATOMS = ['HOH','CLA','CAL']
 def cli():
     pass
 
+def heaviest_atom(atoms_df):
+    """ Given a dataframe of atoms return the one with the largest mass."""
+    import mdtraj as md
+    heaviest_atom_ix = 0
+    heaviest_atom_mass = 0.0
+    for row in atoms_df.iterrows():
+        element = row[1]['element']
+        mass = md.core.element.Element.getBySymbol(element).mass
+        if mass > heaviest_atom_mass:
+            heaviest_atom_ix = row[0]
+            heaviest_atom_weight = mass
+    return heaviest_atom_ix
+
+
 # the contact frequency command
 #
 @click.command()
@@ -37,8 +51,6 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
     weight_paths = weights
     del weights
 
-
-    print(by_particle)
     # parse the weights option if given
     if weight_paths:
         tmp = [weight_path for weight_path in weight_paths.split(',')]
@@ -82,20 +94,44 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
     except ValueError:
         sys.exit("supplied ligand code, '{0}', is not in the topology".format(ligand_code))
 
+    
+    # make pairs of particle types from the protein based on the
+    # 'by_particle' flag
+    if by_particle == 'residue':
+        # column named 'resSeq', matches each residue from protein
+        by_df_col = 'resSeq'
+    elif by_particle == 'atom':
+        # column named 'serial' for the original pdb numbering,
+        # matches each protein atom
+        by_df_col = 'serial'
+
+    # get the rows that correspond to the ligand code given
     lig_df = traj_df[traj_df['resName'] == ligand_code]
-    # get the unique residue indices
-    lig_res_ix = np.unique(np.array(lig_df['resSeq']))
-    # get the dataframe of the protein residues
+
+    # get the dataframe of the protein particles
     prot_df = traj_df[~traj_df['resName'].isin(hetero_atoms)]
-    # get the unique residue indices
-    prot_res_ix = np.unique(np.array(prot_df['resSeq']))
+
+    # get the index of particles for the ligand
+    if by_particle == 'residue':
+        lig_ix = np.unique(np.array(lig_df['resSeq']))        
+        # get the index of residues for the protein
+        prot_ix = np.unique(np.array(prot_df['resSeq']))
+
+    elif by_particle == 'atom':
+        # if by atom is chosen use the heaviest atom in the ligand to
+        # compute distances to
+        lig_ix = np.array([heaviest_atom(lig_df)])    
+        # get the index of atoms for the protein
+        prot_ix = np.array(prot_df.index)
+
     # make the product (pairwise combinations of each iterable of indices
-    pairs_ix = np.array([[i[0], i[1]] for i in it.product(prot_res_ix, lig_res_ix)])
+    pairs_ix = np.array([[i[0], i[1]] for i in it.product(prot_ix, lig_ix)])
     # dataframe for tabulating number of times a pair is within the cutoff, a contact
     pairs_df = pd.DataFrame(pairs_ix)
     # add a column for number of contacts below cutoff and set to zero
-    pairs_df['contacts'] = 0
+    pairs_df['contacts'] = 0        
 
+        
     # go through each trajectory and count the contacts 
     for i, traj_name in enumerate(traj_paths):
         # load the trajectory file using the associated topology file
@@ -107,9 +143,14 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
             except IndexError:
                 click.echo("Trajectory has fewer frames than queried, using all frames")
 
-        # then compute contacts using the residue indices
-        contact_dist, p = md.compute_contacts(traj, contacts=pairs_ix, scheme="closest-heavy")
-        del p
+        if by_particle == 'residue':
+            # then compute contacts using the residue indices
+            contact_dist, p = md.compute_contacts(traj, contacts=pairs_ix, scheme="closest-heavy")
+            del p
+        elif by_particle == 'atom':
+            # then compute contacts from the atoms
+            contact_dist = md.compute_distances(traj, pairs_ix)
+            
         # go through these and sum up how many were below the cutoff
         num_contacts = []
         for col_i in range(contact_dist.shape[1]):
@@ -150,10 +191,7 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
     return contacts
 
 
-def WExplore_weights_reader(weights_path, chunk_size):
-    import pandas as pd
 
-    return pd.read_csv(weights_path)
 
 cli.add_command(contact_freqs)
 if __name__ == "__main__":
