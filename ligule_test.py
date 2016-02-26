@@ -19,7 +19,8 @@ def heaviest_atom(atoms_df):
         mass = md.core.element.Element.getBySymbol(element).mass
         if mass > heaviest_atom_mass:
             heaviest_atom_ix = row[0]
-            heaviest_atom_weight = mass
+            heaviest_atom_mass = mass
+            print(element, mass, row)
     return heaviest_atom_ix
 
 
@@ -194,4 +195,4 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
 
 cli.add_command(contact_freqs)
 if __name__ == "__main__":
-    cli()
+    pass

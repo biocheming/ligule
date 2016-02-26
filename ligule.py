@@ -19,7 +19,8 @@ def heaviest_atom(atoms_df):
         mass = md.core.element.Element.getBySymbol(element).mass
         if mass > heaviest_atom_mass:
             heaviest_atom_ix = row[0]
-            heaviest_atom_weight = mass
+            heaviest_atom_mass = mass
+            print(element, mass, row)
     return heaviest_atom_ix
 
 
@@ -94,7 +95,6 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
     except ValueError:
         sys.exit("supplied ligand code, '{0}', is not in the topology".format(ligand_code))
 
-    
     # make pairs of particle types from the protein based on the
     # 'by_particle' flag
     if by_particle == 'residue':
@@ -124,7 +124,7 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
         # get the index of atoms for the protein
         prot_ix = np.array(prot_df.index)
 
-    # make the product (pairwise combinations of each iterable of indices
+    # make the product (pairwise combinations of each iterable of indices)
     pairs_ix = np.array([[i[0], i[1]] for i in it.product(prot_ix, lig_ix)])
     # dataframe for tabulating number of times a pair is within the cutoff, a contact
     pairs_df = pd.DataFrame(pairs_ix)
