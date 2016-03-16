@@ -20,7 +20,6 @@ def heaviest_atom(atoms_df):
         if mass > heaviest_atom_mass:
             heaviest_atom_ix = row[0]
             heaviest_atom_mass = mass
-            print(element, mass, row)
     return heaviest_atom_ix
 
 
@@ -35,10 +34,11 @@ def heaviest_atom(atoms_df):
 @click.option('--weights', default=None, type=str, help="paths to the weights files e.g. /path/1.dat,/path/2.dat")
 @click.option('--byRes', 'by_particle', flag_value="residue", default=True, help="output contacts on a residue basis")
 @click.option('--byAtom', 'by_particle', flag_value="atom", default=False, help="output contacts on an atom basis")
+@click.option('--ligAtom', default=None, type=int, help="if byAtom was enabled choose the atom by PDB index to get distances from the protein")
 @click.argument('ligand', nargs=1, type=str)
 @click.argument('topology', nargs=1, type=click.Path(exists=True))
 @click.argument('traj_paths', nargs=-1, type=click.Path(exists=True))
-def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle, ligand, topology, traj_paths):
+def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle, ligatom, ligand, topology, traj_paths):
     import mdtraj as md
     import numpy as np
     import pandas as pd
@@ -51,13 +51,20 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
     del topology
     weight_paths = weights
     del weights
+    
+    # make sure the byAtom flag was given if the ligAtom was given
+    try:
+        if not ligatom is None and not by_particle == 'atom':
+            raise ValueError
+    except ValueError:
+        click.echo("Ligand atom given without byAtom flag, ignoring")
 
     # parse the weights option if given
     if weight_paths:
         tmp = [weight_path for weight_path in weight_paths.split(',')]
         weight_paths = tmp
         del tmp
-
+    # if the 
     # load the number of frames list and convert integer string to
     # ints unless its value is 'all'
     tmp = []
@@ -116,11 +123,17 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
         lig_ix = np.unique(np.array(lig_df['resSeq']))        
         # get the index of residues for the protein
         prot_ix = np.unique(np.array(prot_df['resSeq']))
-
+    # if by atom is chosen
     elif by_particle == 'atom':
-        # if by atom is chosen use the heaviest atom in the ligand to
-        # compute distances to
-        lig_ix = np.array([heaviest_atom(lig_df)])    
+        # if chosen atom is not given use the heaviest atom
+        if not ligatom is None:
+            # compute distances to
+            lig_ix = np.array([heaviest_atom(lig_df)])
+        # use the given atom index
+        else:
+            # minus 1, mdtraj is 0 indexed and pdb is 1 indexed
+            lig_ix = ligatom-1
+            click.echo(topo.atom(lig_ix))
         # get the index of atoms for the protein
         prot_ix = np.array(prot_df.index)
 
