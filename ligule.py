@@ -1,9 +1,12 @@
 from __future__ import print_function
 import click
 
-# reference data section
-HETERO_ATOMS = ['HOH','CLA','CAL']
+# While functions are significantly changed inspiration for functions
+# from pdbtools
 
+# reference data section
+BORING_HETEROATOMS = ['HOH','CLA','CAL', 'CA', 'SO4', 'IOD', 'NA', 'CL', 'GOL', 'PO4'] # heteroatoms in the HET label which are not interesting, e.g. solvent
+HETEROATOMS = ['HOH','CLA','CAL'] # heteroatoms that are labelled as atoms
 # the command subgroup
 @click.group()
 def cli():
@@ -29,7 +32,7 @@ def heaviest_atom(atoms_df):
 @click.option('--output', default=None, help="file path to save contact frequency output")
 @click.option('--cutoff', default=0.6, type=float, help="pairwise protein residue-ligand distances under this cutoff (in nm) counted as in contact")
 @click.option('--nframes', default='all', type=str, help="list of the number of frames to take from the respective trajectories use 'all' to get all frames if only one is given with multiple trajectories it is used for all trajectories, e.g. 1500 or all or 1000,all,all, default is 'all' ")
-@click.option('--hetatoms', default=','.join(HETERO_ATOMS), help="list of non-protein heteroatom codes not including the ligand, e.g. 'HOH,CLA', default={0}".format(','.join(HETERO_ATOMS)))
+@click.option('--hetatoms', default=','.join(HETEROATOMS), help="list of non-protein heteroatom codes not including the ligand labelled as ATOM in the pdb that should be HET, e.g. 'HOH,CLA', default={0}".format(','.join(HETEROATOMS)))
 @click.option('--plot', is_flag=True, help="produce a matplotlib bar chart of the frequencies")
 @click.option('--weights', default=None, type=str, help="paths to the weights files e.g. /path/1.dat,/path/2.dat")
 @click.option('--byRes', 'by_particle', flag_value="residue", default=True, help="output contacts on a residue basis")
@@ -84,7 +87,7 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
         nframes = [nframes[0] for f in range(len(traj_paths))]
     # check to make sure that the correct number of frames were given
     if len(nframes) != len(traj_paths):
-        raise ValueError, "Wrong number of frame slices for trajectories given"
+        raise ValueError("Wrong number of frame slices for trajectories given")
 
     # read in the heteroatoms to a list
     hetero_atoms = [str(het) for het in hetatoms.split(',')]
@@ -206,6 +209,46 @@ def contact_freqs(output, cutoff, nframes, hetatoms, plot, weights, by_particle,
 
 
 
+def pdbHetatomCodes(pdb_lines):
+    """ Returns all codes for HETATOMS in a pdb file
+    """
+    hetatoms = list(set([l[7:10].strip() for l in pdb_lines if l.startswith("HET   ")]))
+
+    return hetatoms
+
+# command to list all ligands in a pdb file
+@click.command()
+@click.option('--ignore', default=None, help="specify a heteroatom to skip")
+@click.option('--boring/--no-boring', default=False, help="include boring heteroatoms that are probably not the ligand. {0!r}".format(BORING_HETEROATOMS))
+@click.argument('files', nargs=-1, type=click.Path(exists=True))
+def ligs(ignore, boring, files):
+    """
+    Function to call if run from command line.
+    """
+    outs = []
+    for i, pdb_file in enumerate(files):
+        with open(pdb_file,'r') as f:
+            pdb = f.readlines()
+
+        pdb_id = pdb_file.split(".pdb")[0]
+
+        hetatoms = pdbHetatomCodes(pdb)
+        if not boring:
+            ligands = [het for het in hetatoms if het not in BORING_HETEROATOMS]
+        if boring:
+            ligands = hetatoms
+
+        ligand_out = "\n".join(ligands)
+        out = "pdb {0}:\n{1}".format(pdb_id, ligand_out)
+        outs.append(out)
+        click.echo(out)
+
+    return outs
+
+
+# set groupings
 cli.add_command(contact_freqs)
+cli.add_command(ligs)
+
 if __name__ == "__main__":
     cli()
