@@ -1,5 +1,16 @@
 from __future__ import print_function
+
+# standard library imports
+import os
+import os.path as osp
+
+# internal imports
+import plip.ligcomplex as ligclx
+import plip.report as ligprof
+
+# external imports
 import click
+
 
 # While functions are significantly changed inspiration for functions
 # from pdbtools
@@ -223,7 +234,7 @@ def pdbHetatomCodes(pdb_lines):
 @click.argument('files', nargs=-1, type=click.Path(exists=True))
 def ligs(ignore, boring, files):
     """
-    Function to call if run from command line.
+    List all ligands in a pdb file, with presets.
     """
     outs = []
     for i, pdb_file in enumerate(files):
@@ -246,9 +257,97 @@ def ligs(ignore, boring, files):
     return outs
 
 
+@click.command()
+@click.option('--clust-format/--no-clust-format', default=True, help="parses the filename for the pdb id 'lig_clust###.pdb'")
+@click.option('--interaction', '-i', multiple=True, default=None, type=str, help="set which interactions you want to profile: 'hbonds': hydrogen bonds, 'hydros': hydrophobic contacts.")
+@click.option('--output-dir', '-d', default=None, type=str, help="an output directory to put output files, will make new directory if it doesn't exist, but won't overwrite")
+@click.option('--output-base', '-O', default=None, type=str, help="base filename to ouput results to")
+@click.option('--output-type', '-T', multiple=True, default=None, type=str, help="type of output requested: 'lig_int_freq': interaction type frequency by ligand atom")
+@click.argument('ligand', nargs=1, type=str)
+@click.argument('files', nargs=-1, type=click.Path(exists=True))
+def lig_interactions(clust_format, interaction, output_dir, output_base, output_type, ligand, files):
+    """Outputs summarized data for the type of interactions a ligand has with the
+    protein for many pdbs, depends on PLIP module.
+    """
+
+    if interaction is None:
+        raise ValueError("You must enter at least one interaction type")
+
+    if interaction and not output_base:
+        raise ValueError("You must give an output base name.")
+
+    # make an output dir if requested
+    if output_dir:
+        os.mkdir(output_dir)
+        
+    # interaction types
+    HBONDS = 'hbonds'
+    HYDROS = 'hydros'
+
+    interaction_types = [HBONDS, HYDROS]
+    
+    # output types
+    LIG_INT_FREQ = 'lig_int_freq'
+    output_types = [LIG_INT_FREQ]
+
+    # output file string id
+    LIG_INT_FREQ_STR = "ligFreq"
+
+    complex_int_sets = {}
+    for pdb_path in files:
+
+        # Hack to set the id for the cluster
+        if clust_format:
+            complex_id = int(osp.splitext(osp.basename(pdb_path))[0].split("clust")[-1])
+        else:
+            raise ValueError("Only the cluster format 'lig_clust#.pdb' is supported currently please enter files with this name.")
+            
+
+        # create a ligand-protein complex
+        lig_comp = ligclx.create_lig_complex(pdb_path, ligand)
+
+        # save the interaction set for this ligand
+        int_set = lig_comp.interaction_sets[lig_comp.interaction_sets.keys()[0]]
+        complex_int_sets[complex_id] = int_set
+
+    # go through each interaction type
+    outputs = {}
+    try:
+        for i in interaction:
+            # check if it is a valid interaction type
+            if i in interaction_types:
+                outputs[i] = {}
+                # go through each output type requested
+                for out in output_type:
+                    try:
+                        # check to see if it is a valid output type
+                        if out in output_types:
+                            # the output type output generators
+
+                            if out == LIG_INT_FREQ:
+                                # TODO need to refactor the construct_df to return only
+                                # the requested output type
+                                df = ligprof.construct_df(complex_int_sets, i)
+                                outputs[i][out] = df
+                                # write the output file
+                                df.to_csv(output_base+"_"+i+"_"+LIG_INT_FREQ_STR+".csv")
+                        else:
+                            raise ValueError("Not a valid output type")
+                    except ValueError:
+                        click.echo("Ignoring output type")
+            else:
+                raise ValueError("Not a valid interaction type")
+    except ValueError:
+        click.echo("Ignoring interaction type")
+    
+
+    return None
+    
+
 # set groupings
 cli.add_command(contact_freqs)
 cli.add_command(ligs)
+cli.add_command(lig_interactions)
 
 if __name__ == "__main__":
     cli()
