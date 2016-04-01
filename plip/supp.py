@@ -20,7 +20,7 @@ limitations under the License.
 from __future__ import print_function
 
 # PLIP Modules
-import config
+import plip.config as config
 
 # Python standard library
 import re

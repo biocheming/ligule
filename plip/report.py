@@ -17,7 +17,7 @@ limitations under the License.
 """
 
 # Internal Imports
-import config as plipconfig
+import plip.config as plipconfig
 
 # Python Standard Library
 import time
@@ -30,30 +30,75 @@ import pandas as pd
 
 # Functions for data output
 
-def construct_df(interaction_sets_dict, interaction_type):
+# TODO do I need a class for complexes. Could be usefule for having
+# different analysis functions as methods instead of passing around
+# lists with agreement between them on what it will be.
 
-    # supported interaction types
-    if interaction_type == "hbonds":
-        df_func = hbond_df
-    elif interaction_type == "hydros":
-        df_func = hydrophobic_df
-    else:
-        raise ValueError("not a valid interaction type")
+# Complexes.Output.write_csvs(path)
+def write_complexes_output(output, dir_path, output_base):
+    for interaction, outputs_dict in output.iteritems():
+        for output_type, df in outputs_dict.iteritems():
+            # DEBUG
+            print("OUTPUT_TYPE in here", output_type)
+            if output_type in plipconfig.OUTPUT_STR_DICT.keys():
+                out_str = plipconfig.OUTPUT_STR_DICT[output_type]
+                df.to_csv("{0}_{1}_{2}.csv".format(output_base, interaction, out_str))
+            else:
+                raise ValueError("{0} not a valid output type".format(output_type))
+    return None
 
-    df = None
-    # concatenate the dfs together as single rows
-    for complex_id, int_set in interaction_sets_dict.iteritems():
-        df_new_row = df_func(complex_id, int_set)
-        # the first row
-        if df is None:
-            df = df_new_row
-        # the rest of the rows
+
+def complex_outputs(int_set, complex_id, interactions, output_types):
+
+    outputs = {}
+    for i in interactions:
+
+        # supported interaction types
+        # Set the function for generating a new row of data
+        if i == plipconfig.HBONDS:
+            df_func = hbond_df
+        elif i == plipconfig.HYDROS:
+            df_func = hydrophobic_df
         else:
-            df = pd.concat([df, df_new_row])
-        
-    return df
+            raise ValueError("not a valid interaction type")
 
-def hbond_df(complex_id, interaction_set):
+        outputs[i] = {}
+        
+        for out in output_types:
+            # set the output generator type
+            if out == plipconfig.LIG_INT_FREQ:
+                output_func = one
+            else:
+                raise ValueError("Not a valid output type")
+
+            # put the output in the dict
+            outputs[i][out] = df_func(complex_id, int_set, output_func)
+
+    return outputs
+
+# Complexes.Output.concat(out2)
+def concat_complex_outputs(out1, out2):
+
+    new_out = {}
+    # check to make sure they have the same interaction and output types
+    if set(out1.keys()) != set(out2.keys()):
+        raise ValueError("Both output sets must have the same interaction types")
+    else:
+        for interaction in out1.keys():
+            new_out[interaction] = {}
+            if set(out1[interaction]) != set(out2[interaction]):
+                raise ValueError("Both output sets must have the same output types")
+            # proceed with concatenation
+            else:
+                for out in out1[interaction]:
+                    new_out[interaction][out] = pd.concat([out1[interaction][out], out2[interaction][out]])
+
+    return new_out
+
+def one(something):
+    return 1
+
+def hbond_df(complex_id, interaction_set, output_func):
     # if there are interactions continue otherwise return None
     df = None
     
@@ -66,11 +111,11 @@ def hbond_df(complex_id, interaction_set):
     if interaction_set.hbonds_pdon:
         # ligand in acceptor
         for bond in interaction_set.hbonds_pdon:
-            d[bond.a_orig_idx] = 1 #bond.distance_ad
+            d[bond.a_orig_idx] = output_func(bond)
     if interaction_set.hbonds_ldon:
         # ligand is donor
         for bond in interaction_set.hbonds_ldon:
-            d[bond.d_orig_idx] = 1 #bond.distance_ad
+            d[bond.d_orig_idx] = output_func(bond)
     df = pd.DataFrame(d, index=[complex_id])
     
     return df

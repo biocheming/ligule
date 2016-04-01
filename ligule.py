@@ -1,12 +1,16 @@
 from __future__ import print_function
 
+import sys
+sys.path.insert(0, "/usr/lib/python2.7/dist-packages")
+
+
 # standard library imports
 import os
 import os.path as osp
 
 # internal imports
 import plip.ligcomplex as ligclx
-import plip.report as ligprof
+import plip.report as ligrep
 
 # external imports
 import click
@@ -280,21 +284,15 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
     if output_dir:
         os.mkdir(output_dir)
         
-    # interaction types
-    HBONDS = 'hbonds'
-    HYDROS = 'hydros'
 
-    interaction_types = [HBONDS, HYDROS]
-    
-    # output types
-    LIG_INT_FREQ = 'lig_int_freq'
-    output_types = [LIG_INT_FREQ]
+    # DEBUG
+    print("Starting interaction sets")
 
-    # output file string id
-    LIG_INT_FREQ_STR = "ligFreq"
-
-    complex_int_sets = {}
+    outputs = None
     for pdb_path in files:
+
+        # DEBUG
+        print("Int set starting:", pdb_path)
 
         # Hack to set the id for the cluster
         if clust_format:
@@ -302,47 +300,36 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
         else:
             raise ValueError("Only the cluster format 'lig_clust#.pdb' is supported currently please enter files with this name.")
             
-
         # create a ligand-protein complex
         lig_comp = ligclx.create_lig_complex(pdb_path, ligand)
 
-        # save the interaction set for this ligand
+        # get the interaction set we are interested in
         int_set = lig_comp.interaction_sets[lig_comp.interaction_sets.keys()[0]]
-        complex_int_sets[complex_id] = int_set
 
-    # go through each interaction type
-    outputs = {}
-    try:
-        for i in interaction:
-            # check if it is a valid interaction type
-            if i in interaction_types:
-                outputs[i] = {}
-                # go through each output type requested
-                for out in output_type:
-                    try:
-                        # check to see if it is a valid output type
-                        if out in output_types:
-                            # the output type output generators
+        # generate data row
+        new_out = ligrep.complex_outputs(int_set, complex_id, interaction, output_type)
 
-                            if out == LIG_INT_FREQ:
-                                # TODO need to refactor the construct_df to return only
-                                # the requested output type
-                                df = ligprof.construct_df(complex_int_sets, i)
-                                outputs[i][out] = df
-                                # write the output file
-                                df.to_csv(output_base+"_"+i+"_"+LIG_INT_FREQ_STR+".csv")
-                        else:
-                            raise ValueError("Not a valid output type")
-                    except ValueError:
-                        click.echo("Ignoring output type")
-            else:
-                raise ValueError("Not a valid interaction type")
-    except ValueError:
-        click.echo("Ignoring interaction type")
-    
+        # if it is not the first row add this to the output
+        if outputs is None:
+            outputs = new_out
+        else:
+            outputs = ligrep.concat_complex_outputs(outputs, new_out)
 
-    return None
-    
+        # DEBUG
+        print("Int set ending:", pdb_path)
+
+    # write out the output files
+    ligrep.write_complexes_output(outputs, output_dir, output_base)
+
+    # DEBUG
+    print("wrote df csv to", output_dir)
+
+    return outputs
+
+
+@click.command()
+def 
+
 
 # set groupings
 cli.add_command(contact_freqs)

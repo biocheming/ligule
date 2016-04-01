@@ -21,8 +21,8 @@ import itertools
 from collections import defaultdict
 
 # Own modules
-from supp import *
-import config
+from plip.supp import *
+import plip.config
 
 
 ##################################################

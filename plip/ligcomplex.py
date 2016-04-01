@@ -21,9 +21,9 @@ limitations under the License.
 from operator import itemgetter
 
 # Own modules
-from interactions import *
-from supp import *
-import config
+from plip.interactions import *
+from plip.supp import *
+import plip.config as config
 
 ### Helper functions
 
