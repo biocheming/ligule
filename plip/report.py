@@ -106,7 +106,7 @@ def hbond_df(complex_id, interaction_set, output_func):
     # the distance as the value along the single index
     # initialize to no interaction
     d = {atom.idx : 0 for atom in interaction_set.ligand.all_atoms}
-
+    print("LIG DICT", d)
     # set the interaction to 1 if it exists
     if interaction_set.hbonds_pdon:
         # ligand in acceptor

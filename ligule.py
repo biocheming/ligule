@@ -9,12 +9,13 @@ import os
 import os.path as osp
 
 # internal imports
-import plip.ligcomplex as ligclx
-import plip.report as ligrep
+#import plip.ligcomplex as ligclx
+#import plip.report as ligrep
 
 # external imports
 import click
-
+import pandas as pd
+import biopandas.pdb as pdPDB
 
 # While functions are significantly changed inspiration for functions
 # from pdbtools
@@ -22,9 +23,24 @@ import click
 # reference data section
 BORING_HETEROATOMS = ['HOH','CLA','CAL', 'CA', 'SO4', 'IOD', 'NA', 'CL', 'GOL', 'PO4'] # heteroatoms in the HET label which are not interesting, e.g. solvent
 HETEROATOMS = ['HOH','CLA','CAL'] # heteroatoms that are labelled as atoms
+
+# types
+
+FREQ_SUMS = 'freq_sums'
+WEIGHTED_SUMS = 'weighted_sums'
+
+FREQ_OUTPUT_STR_DICT = {FREQ_SUMS : 'freqSum',
+                   WEIGHTED_SUMS : 'freqWeight'
+                   }
+
+
 # the command subgroup
 @click.group()
 def cli():
+    pass
+
+@click.group()
+def vis():
     pass
 
 def heaviest_atom(atoms_df):
@@ -321,20 +337,103 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
     # write out the output files
     ligrep.write_complexes_output(outputs, output_dir, output_base)
 
-    # DEBUG
-    print("wrote df csv to", output_dir)
-
     return outputs
 
 
 @click.command()
-def 
+@click.option('--fformat', '-f', default='pdb', help="format of ligand molecule input files")
+@click.option('--output-dir', '-d', default=None, type=str, help="an output directory to put output files, will make new directory if it doesn't exist, but won't overwrite")
+@click.option('--output-base', '-O', default=None, type=str, help="base filename to ouput results to")
+@click.option('--vis', '-Z', default=None, multiple=True, type=(str, str), help="produce a visualization of type VIS-TYPE with the data DATA-PATH; '-Z VIS-TYPE DATA-PATH")
+@click.argument('ligand-file', nargs=1, type=click.Path(exists=True))
+@click.argument('freq-data', nargs=1, type=click.Path(exists=True))
+def freq(fformat, output_dir, output_base, vis, ligand_file, freq_data):
+    """Output (pdb) files with values set for visualization of
+interaction frequency.
+
+    Available visualization types (vis):
+        '{0}' : None -- sums the frequencies
+        '{1}' : [weights] -- weight frequency by the weights and sum
+
+    """.format(FREQ_SUMS, WEIGHTED_SUMS)
+
+    if output_base is None:
+        raise ValueError("Must provide a basename")
+    if vis is None:
+        raise ValueError("Must provide a vis type")
+    # make an output dir if requested
+    if output_dir:
+        os.mkdir(output_dir)
+
+    # load the frequency data as a DataFrame
+    freq_data = pd.read_csv(freq_data, index_col=0)
+    print("FREQ_DATA\n", freq_data.shape)
+    for vis_type, data in vis:
+
+        # make requested visualization datas
+        if FREQ_SUMS == vis_type:
+            # no data to transform freq_data
+            vis_data = freq_data.sum()
+            
+        elif WEIGHTED_SUMS == vis_type:
+            # multiply each row by that complexes weight
+            # TODO HACK because my input files are not standard
+            weights = pd.Series.from_csv(data, index_col=1, sep=' ')
+            print("WEIGHTS\n", weights.shape)
+            vis_data = freq_data.rmul(weights, axis='index')
+            print("VIS_DATA_WITH_WEIGHTS\n", vis_data)            
+            # sum by columns for a weighted sum
+            vis_data = vis_data.sum()
+            print("AFTER SUM\n", vis_data)
+
+        # output results
+        if fformat == 'pdb':
+            # write file with vis_type string
+            outpath = "{0}_{1}.pdb".format(output_base,
+                                                    FREQ_OUTPUT_STR_DICT[vis_type])
+
+            if output_dir:                
+                outpath = osp.join(output_dir, filename)
+
+            # TODO biopandas might not update the pdb_text after you
+            # alter the df so I will output pdb from the pdb_replace_bfactor file for now
+
+            # get the text with the b_factor column
+            # replaced
+            pdb_text = pdb_replace_bfactor(ligand_file, vis_data, outpath)
+
+
+            # with open(outpath, 'w') as fw:
+            #     fw.write(pdb_text)
+
+            
+
+    return None
+
+def pdb_replace_bfactor(pdb_path, series, outpath):
+    """Use biopandas to read in as a dataframe and return the pdb text."""
+
+    
+    pl = pdPDB.PandasPDB().read_pdb(pdb_path)
+    print("REPLACING WITH\n", series)
+    print("b_factor\n",  pl.df['ATOM']['b_factor'])
+    pl.df['ATOM']['b_factor'] = series.values
+    print("AFTER\n", pl.df['ATOM']['b_factor'])
+
+    pl.to_pdb(outpath)
+    
+    return pl.pdb_text
 
 
 # set groupings
+
 cli.add_command(contact_freqs)
 cli.add_command(ligs)
 cli.add_command(lig_interactions)
+cli.add_command(vis)
+
+vis.add_command(freq)
+
 
 if __name__ == "__main__":
     cli()
