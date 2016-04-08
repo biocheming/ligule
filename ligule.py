@@ -1,21 +1,23 @@
 from __future__ import print_function
 
+
+# because the omnia repo from conda for openababel is not working
+# properly
 import sys
-sys.path.insert(0, "/usr/lib/python2.7/dist-packages")
+#sys.path.insert(0, "/usr/lib/python2.7/dist-packages")
 
 
 # standard library imports
 import os
 import os.path as osp
 
-# internal imports
-#import plip.ligcomplex as ligclx
-#import plip.report as ligrep
 
 # external imports
 import click
+import numpy as np
 import pandas as pd
 import biopandas.pdb as pdPDB
+# import parmed as pmd
 
 # While functions are significantly changed inspiration for functions
 # from pdbtools
@@ -28,11 +30,107 @@ HETEROATOMS = ['HOH','CLA','CAL'] # heteroatoms that are labelled as atoms
 
 FREQ_SUMS = 'freq_sums'
 WEIGHTED_SUMS = 'weighted_sums'
-
+NEG_LOG_P = 'neg_log_p'
 FREQ_OUTPUT_STR_DICT = {FREQ_SUMS : 'freqSum',
-                   WEIGHTED_SUMS : 'freqWeight'
+                        WEIGHTED_SUMS : 'freqWeight',
+                        NEG_LOG_P : '-logp',
                    }
 
+# class LigandComplex(object):
+#     """A collection of chemical structures that are of interest and
+#     interacting and said to exist "in complex" with each other. Contains
+#     useful high level information on information relevant to
+#     ligand-receptor complexes and otherwise.
+
+#     Attributes
+#     ----------
+
+#     structures : :class: `StructureList`
+
+#     binding_sites : :class: `SelectionList`
+
+#     ligands : :class: `StructureList`
+
+#     receptors : :class: `StructureList`
+
+#     ligand_receptor_interactions : :class: `InteractionList`
+
+#     receptor_receptor_interactions : :class: `InteractionList`
+
+#     ligand_ligand_interaction : :class: `InteractionList`
+
+#     interactions : :class: `InteractionList`
+
+#     title : ``str``
+
+#     Notes
+#     -----
+    
+
+#     """
+
+#     def __init__(self):
+#         self.structures = StructuresList()
+#         self.binding_sites = SelectionList()
+#         self.ligands = StructureList()
+#         self.receptors = StructureList()
+#         self
+
+#     # TODO
+#     def __repr__(self):
+#         pass
+
+#     def add_structure(self, structure):
+#         pass
+
+#     def is_changed(self):
+#         pass
+
+#     def unchange(self):
+#         pass
+
+#     def prune_empty_terms(self):
+#         pass
+
+#     def copy(self):
+#         pass
+    
+#     def view(self):
+#         pass
+
+#     def save(self, fname, format=None, overwrite=False):
+#         pass
+
+#     def identify_interactions(self, selections, interaction_type):
+#         """Given a `SelectionList` identify interactions of `interaction_type`
+#         and return an `InteractionList`.
+
+#         """
+#         pass
+
+
+# class Interaction(Selection):
+#     """Multiple collections of atoms which are disjoint but have a typed
+#     interaction between them.
+
+#     """
+
+# class InteractionList():
+#     """A tracked list of `Interaction` instances.(?)
+
+#     """
+
+# class StructureList(TrackedList):
+#     """A tracked list of `Structure` instances.
+
+#     """
+
+# class Selection():
+#     """A list of `Atom`s, `Residue`s, or `Structure`s that need not be
+#     related in any way other than they are in this class together where
+#     restrictions are not enforced.
+
+#     """
 
 # the command subgroup
 @click.group()
@@ -44,6 +142,7 @@ def vis():
     pass
 
 def heaviest_atom(atoms_df):
+
     """ Given a dataframe of atoms return the one with the largest mass."""
     import mdtraj as md
     heaviest_atom_ix = 0
@@ -290,6 +389,12 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
     protein for many pdbs, depends on PLIP module.
     """
 
+    sys.path.insert(0, "/usr/lib/python2.7/dist-packages")
+    # internal imports
+    import plip.ligcomplex as ligclx
+    import plip.report as ligrep
+
+
     if interaction is None:
         raise ValueError("You must enter at least one interaction type")
 
@@ -297,25 +402,23 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
         raise ValueError("You must give an output base name.")
 
     # make an output dir if requested
-    if output_dir:
-        os.mkdir(output_dir)
-        
-
-    # DEBUG
-    print("Starting interaction sets")
+    try:
+        if output_dir:
+            os.mkdir(output_dir)
+    except OSError:
+        pass
 
     outputs = None
     for pdb_path in files:
 
-        # DEBUG
-        print("Int set starting:", pdb_path)
+        print("Processing {0}".format(pdb_path))
 
         # Hack to set the id for the cluster
         if clust_format:
-            complex_id = int(osp.splitext(osp.basename(pdb_path))[0].split("clust")[-1])
+            complex_id = int(osp.splitext(osp.basename(pdb_path))[0].split("clust")[-1].split('_')[0])
         else:
             raise ValueError("Only the cluster format 'lig_clust#.pdb' is supported currently please enter files with this name.")
-            
+
         # create a ligand-protein complex
         lig_comp = ligclx.create_lig_complex(pdb_path, ligand)
 
@@ -324,15 +427,12 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
 
         # generate data row
         new_out = ligrep.complex_outputs(int_set, complex_id, interaction, output_type)
-
+        
         # if it is not the first row add this to the output
         if outputs is None:
             outputs = new_out
         else:
             outputs = ligrep.concat_complex_outputs(outputs, new_out)
-
-        # DEBUG
-        print("Int set ending:", pdb_path)
 
     # write out the output files
     ligrep.write_complexes_output(outputs, output_dir, output_base)
@@ -345,29 +445,37 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
 @click.option('--output-dir', '-d', default=None, type=str, help="an output directory to put output files, will make new directory if it doesn't exist, but won't overwrite")
 @click.option('--output-base', '-O', default=None, type=str, help="base filename to ouput results to")
 @click.option('--vis', '-Z', default=None, multiple=True, type=(str, str), help="produce a visualization of type VIS-TYPE with the data DATA-PATH; '-Z VIS-TYPE DATA-PATH")
+@click.option('--logp-cutoff', default=5.0, type=float, help="specify a upper cutoff value for logp visualizations")
 @click.argument('ligand-file', nargs=1, type=click.Path(exists=True))
 @click.argument('freq-data', nargs=1, type=click.Path(exists=True))
-def freq(fformat, output_dir, output_base, vis, ligand_file, freq_data):
+def freq(fformat, output_dir, output_base, vis, logp_cutoff, ligand_file, freq_data):
     """Output (pdb) files with values set for visualization of
 interaction frequency.
 
     Available visualization types (vis):
         '{0}' : None -- sums the frequencies
-        '{1}' : [weights] -- weight frequency by the weights and sum
+        '{1}' : [weights] -- probability (p) of interaction, from weights
+        '{2}' : [weights]  -- -log(p)
 
-    """.format(FREQ_SUMS, WEIGHTED_SUMS)
+    """.format(FREQ_SUMS, WEIGHTED_SUMS, NEG_LOG_P)
 
     if output_base is None:
         raise ValueError("Must provide a basename")
     if vis is None:
         raise ValueError("Must provide a vis type")
-    # make an output dir if requested
-    if output_dir:
-        os.mkdir(output_dir)
+
+    try:
+        # make an output dir if requested
+        if output_dir:
+            os.mkdir(output_dir)
+    except OSError:
+        pass
 
     # load the frequency data as a DataFrame
+    # making sure to change the columns to ints and not keep as strings
     freq_data = pd.read_csv(freq_data, index_col=0)
-    print("FREQ_DATA\n", freq_data.shape)
+    freq_data.columns = [int(col) for col in freq_data.columns]
+    
     for vis_type, data in vis:
 
         # make requested visualization datas
@@ -378,13 +486,26 @@ interaction frequency.
         elif WEIGHTED_SUMS == vis_type:
             # multiply each row by that complexes weight
             # TODO HACK because my input files are not standard
-            weights = pd.Series.from_csv(data, index_col=1, sep=' ')
-            print("WEIGHTS\n", weights.shape)
+            weights = pd.Series.from_csv(data, sep=',')
             vis_data = freq_data.rmul(weights, axis='index')
-            print("VIS_DATA_WITH_WEIGHTS\n", vis_data)            
             # sum by columns for a weighted sum
             vis_data = vis_data.sum()
-            print("AFTER SUM\n", vis_data)
+
+        elif NEG_LOG_P == vis_type:
+            # do the weighted_sums process
+            weights = pd.Series.from_csv(data, sep=',')
+            vis_data = freq_data.rmul(weights, axis='index')
+            # sum by columns for a weighted sum
+            vis_data = vis_data.sum()
+
+            # take the negative log_10 of these sums using a masked
+            # array to avoid 0.0 values
+
+            # P / P_max of values that are not 0.0 (-inf)
+            # if > logp_cutoff set to logp_cutoff
+            vis_data = vis_data.where( (vis_data > 0.0) ) / vis_data.max()
+            vis_data = np.negative(np.log( vis_data ))
+            vis_data = vis_data.where( (vis_data < logp_cutoff) ).fillna(logp_cutoff)
 
         # output results
         if fformat == 'pdb':
@@ -415,10 +536,13 @@ def pdb_replace_bfactor(pdb_path, series, outpath):
 
     
     pl = pdPDB.PandasPDB().read_pdb(pdb_path)
-    print("REPLACING WITH\n", series)
-    print("b_factor\n",  pl.df['ATOM']['b_factor'])
-    pl.df['ATOM']['b_factor'] = series.values
-    print("AFTER\n", pl.df['ATOM']['b_factor'])
+
+    # the index of the data to be put into the pdb dataframe is the
+    # 'atom_number' column of the pdb, so align to that as an index
+    index = pl.df['ATOM']['atom_number']
+    reidx_series = series.align(pd.Series(index, index=index), join='right', fill_value=0)[0]
+    
+    pl.df['ATOM']['b_factor'] = reidx_series.values
 
     pl.to_pdb(outpath)
     

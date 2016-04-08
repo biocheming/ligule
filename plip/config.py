@@ -47,12 +47,14 @@ INTERACTION_TYPES = [HBONDS, HYDROS]
 
 # output types
 LIG_INT_FREQ = 'lig_int_freq'
-OUTPUT_TYPES = [LIG_INT_FREQ]
+PROT_INT_FREQ = 'prot_int_freq'
+OUTPUT_TYPES = [LIG_INT_FREQ, PROT_INT_FREQ]
 
 # output file string id
 LIG_INT_FREQ_STR = "ligFreq"
-
-OUTPUT_STR_DICT = {LIG_INT_FREQ : LIG_INT_FREQ_STR}
+PROT_INT_FREQ_STR = "protFreq"
+OUTPUT_STR_DICT = {LIG_INT_FREQ : LIG_INT_FREQ_STR,
+                   PROT_INT_FREQ : PROT_INT_FREQ_STR}
 
 # Configuration file for Protein-Ligand Interaction Profiler (PLIP)
 # Set thresholds for detection of interactions

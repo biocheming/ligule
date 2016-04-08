@@ -16,14 +16,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-
 # Python Standard Library
 from operator import itemgetter
+import os.path as osp
 
 # Own modules
 from plip.interactions import *
 from plip.supp import *
 import plip.config as config
+
+# External modules
+from biopandas.pdb import PandasPDB
 
 ### Helper functions
 
@@ -36,6 +39,7 @@ def create_lig_complex(pdb_path, lig_code):
     pdb = PDBComplex()
     # load the pdb
     pdb.load_pdb(pdb_path)
+    
     # find the ligand you want to characterize then do so
     for ligand in pdb.ligands:
         if ligand.longname == lig_code:
@@ -335,6 +339,264 @@ class LigandFinder:
                     res_kmers.append(newres)
             return res_kmers
 
+
+# class ProteinFinder:
+#     def __init__(self, proteincomplex, altconf, modres, covalent, mapper):
+#         # attributes before I messed with it
+#         self.lignames_all = None
+#         self.lignames_kept = None
+#         self.water = None
+#         self.proteincomplex = proteincomplex
+#         self.altconformations = altconf
+#         self.modresidues = modres
+#         self.covalent = covalent
+#         self.mapper = mapper
+#         self.ligands = self.getligs()
+#         self.excluded = sorted(list(self.lignames_all.difference(set(self.lignames_kept))))
+#         # my attributes
+#         self.resnames_all = None
+#         self.resnames_kept = None
+#         self.residues = self.getprots()
+
+#     def getligs(self):
+#         """Get all ligands from a PDB file and prepare them for analysis.
+#         Returns all non-empty ligands.
+#         """
+#         ligands = []
+
+#         # Filter for ligands using lists
+#         ligand_residues, self.lignames_all, self.water = self.filter_for_ligands()
+
+#         all_res_dict = {(a.GetName(), a.GetChain(), a.GetNum()): a for a in ligand_residues}
+#         self.lignames_kept = list(set([a.GetName() for a in ligand_residues]))
+
+#         if not config.BREAKCOMPOSITE:
+#             #  Update register of covalent links with those between DNA/RNA subunits
+#             self.covalent += nucleotide_linkage(all_res_dict)
+#             #  Find fragment linked by covalent bonds
+#             res_kmers = self.identify_kmers(all_res_dict)
+#         else:
+#             res_kmers = [[a, ] for a in ligand_residues]
+#         for kmer in res_kmers:  # iterate over all ligands and extract molecules + information
+#             ligands.append(self.extract_ligand(kmer))
+#         return [lig for lig in ligands if len(lig.mol.atoms) != 0]
+
+#     def extract_ligand(self, kmer):
+#         """Extract the ligand by copying atoms and bonds and assign all information necessary for later steps."""
+#         data = namedtuple('ligand', 'mol hetid chain position water members longname type atomorder can_to_pdb')
+#         members = [(res.GetName(), res.GetChain(), int32_to_negative(res.GetNum())) for res in kmer]
+#         members = sorted(members, key=lambda x: (x[1], x[2]))
+#         rname, rchain, rnum = members[0]
+#         debuglog("Finalizing extraction for ligand %s:%s:%s" % (rname, rchain, rnum))
+#         names = [x[0] for x in members]
+#         longname = '-'.join([x[0] for x in members])
+
+#         # Classify a ligand by its HETID(s)
+#         ligtype = classify_by_name(names)
+
+#         hetatoms = set()
+#         for obresidue in kmer:
+#             hetatoms_res = set([(obatom.GetIdx(), obatom) for obatom in pybel.ob.OBResidueAtomIter(obresidue)
+#                                 if not obatom.IsHydrogen()])
+
+#             if not config.ALTLOC:
+#                 # Remove alternative conformations (standard -> True)
+#                 hetatoms_res = set([atm for atm in hetatoms_res
+#                                     if not self.mapper.mapid(atm[0], mtype='protein',
+#                                                              to='internal') in self.altconformations])
+#             hetatoms.update(hetatoms_res)
+
+#         hetatoms = dict(hetatoms)  # make it a dict with idx as key and OBAtom as value
+#         lig = pybel.ob.OBMol()  # new ligand mol
+#         neighbours = dict()
+#         for obatom in hetatoms.values():  # iterate over atom objects
+#             idx = obatom.GetIdx()
+#             lig.AddAtom(obatom)
+#             # ids of all neighbours of obatom
+#             neighbours[idx] = set([neighbour_atom.GetIdx() for neighbour_atom
+#                                    in pybel.ob.OBAtomAtomIter(obatom)]) & set(hetatoms.keys())
+
+#         ##############################################################
+#         # map the old atom idx of OBMol to the new idx of the ligand #
+#         ##############################################################
+
+#         newidx = dict(zip(hetatoms.keys(), [obatom.GetIdx() for obatom in pybel.ob.OBMolAtomIter(lig)]))
+#         mapold = dict(zip(newidx.values(), newidx))
+#         # copy the bonds
+#         for obatom in hetatoms:
+#             for neighbour_atom in neighbours[obatom]:
+#                 bond = hetatoms[obatom].GetBond(hetatoms[neighbour_atom])
+#                 lig.AddBond(newidx[obatom], newidx[neighbour_atom], bond.GetBondOrder())
+#         lig = pybel.Molecule(lig)
+
+#         # For kmers, the representative ids are chosen (first residue of kmer)
+#         lig.data.update({'Name': rname, 'Chain': rchain, 'ResNr': rnum})
+
+#         # Check if a negative residue number is represented as a 32 bit integer
+#         if rnum > 10 ** 5:
+#             rnum = int32_to_negative(rnum)
+
+#         lig.title = ':'.join((rname, rchain, str(rnum)))
+#         self.mapper.ligandmaps[lig.title] = mapold
+
+#         atomorder = canonicalize(lig)
+
+#         can_to_pdb = {}
+#         if atomorder is not None:
+#             can_to_pdb = {atomorder[key-1]: mapold[key] for key in mapold}
+
+#         ligand = data(mol=lig, hetid=rname, chain=rchain, position=rnum, water=self.water,
+#                       members=members, longname=longname, type=ligtype, atomorder=atomorder,
+#                       can_to_pdb=can_to_pdb)
+#         return ligand
+
+#     def filter_for_ligands(self):
+#         """Given an OpenBabel Molecule, get all ligands, their names, and water"""
+
+#         candidates1 = [o for o in pybel.ob.OBResidueIter(self.proteincomplex.OBMol) if not (o.GetResidueProperty(9)
+#                                                                                          or o.GetResidueProperty(0))]
+#         all_lignames = set([a.GetName() for a in candidates1])
+
+#         water = [o for o in pybel.ob.OBResidueIter(self.proteincomplex.OBMol) if o.GetResidueProperty(9)]
+#         # Filter out non-ligands
+#         candidates2 = [a for a in candidates1 if is_lig(a.GetName()) and a.GetName() not in self.modresidues]
+#         debuglog("%i ligand(s) after first filtering step." % len(candidates2))
+
+#         ############################################
+#         # Filtering by counting and artifacts list #
+#         ############################################
+#         artifacts = []
+#         unique_ligs = set(a.GetName() for a in candidates2)
+#         for ulig in unique_ligs:
+#             # Discard if appearing 15 times or more and is possible artifact
+#             if ulig in config.biolip_list and [a.GetName() for a in candidates2].count(ulig) >= 15:
+#                 artifacts.append(ulig)
+
+#         selected_ligands = [a for a in candidates2 if a.GetName() not in artifacts]
+
+#         return selected_ligands, all_lignames, water
+
+#     def getprots(self):
+#         """Get all ligands from a PDB file and prepare them for analysis.
+#         Returns all non-empty ligands.
+#         """
+#         prots = []
+
+#         # Filter for ligands using lists
+#         protein_residues, self.resnames_all, self.water = self.filter_for_proteins()
+
+#         all_res_dict = {(a.GetName(), a.GetChain(), a.GetNum()): a for a in protein_residues}
+#         self.resnames_kept = list(set([a.GetName() for a in protein_residues]))
+
+#         if not config.BREAKCOMPOSITE:
+#             #  Update register of covalent links with those between DNA/RNA subunits
+#             self.covalent += nucleotide_linkage(all_res_dict)
+#             #  Find fragment linked by covalent bonds
+#             res_kmers = self.identify_kmers(all_res_dict)
+#         else:
+#             res_kmers = [[a, ] for a in protein_residues]
+#         for kmer in res_kmers:  # iterate over all ligands and extract molecules + information
+#             prots.append(self.extract_protein(kmer))
+#         return [prot for prot in prots if len(prot.mol.atoms) != 0]
+
+#     def extract_protein(self, kmer):
+#         """Extract the ligand by copying atoms and bonds and assign all information necessary for later steps."""
+        
+#         data = namedtuple('ligand', 'mol hetid chain position water members longname type atomorder can_to_pdb')
+#         members = [(res.GetName(), res.GetChain(), int32_to_negative(res.GetNum())) for res in kmer]
+#         members = sorted(members, key=lambda x: (x[1], x[2]))
+#         rname, rchain, rnum = members[0]
+#         debuglog("Finalizing extraction for protein %s:%s:%s" % (rname, rchain, rnum))
+#         names = [x[0] for x in members]
+#         longname = '-'.join([x[0] for x in members])
+
+#         prot = pybel.ob.OBMol()  # new protein mol
+
+#         # copy the bonds
+#         for obatom in hetatoms:
+#             for neighbour_atom in neighbours[obatom]:
+#                 bond = hetatoms[obatom].GetBond(hetatoms[neighbour_atom])
+#                 lig.AddBond(newidx[obatom], newidx[neighbour_atom], bond.GetBondOrder())
+                
+#         prot = pybel.Molecule(prot)
+
+#         # For kmers, the representative ids are chosen (first residue of kmer)
+#         lig.data.update({'Name': rname, 'Chain': rchain, 'ResNr': rnum})
+
+#         # Check if a negative residue number is represented as a 32 bit integer
+#         if rnum > 10 ** 5:
+#             rnum = int32_to_negative(rnum)
+
+#         lig.title = ':'.join((rname, rchain, str(rnum)))
+#         self.mapper.ligandmaps[lig.title] = mapold
+
+#         atomorder = canonicalize(lig)
+
+#         can_to_pdb = {}
+#         if atomorder is not None:
+#             can_to_pdb = {atomorder[key-1]: mapold[key] for key in mapold}
+
+#         ligand = data(mol=lig, hetid=rname, chain=rchain, position=rnum, water=self.water,
+#                       members=members, longname=longname, type=ligtype, atomorder=atomorder,
+#                       can_to_pdb=can_to_pdb)
+#         return ligand
+
+#     def filter_for_protein(self):
+#         """Given an OpenBabel Molecule, get all ligands, their names, and water"""
+
+#         candidates1 = [o for o in pybel.ob.OBResidueIter(self.proteincomplex.OBMol) if not o in [lig.longname for lig in self.proteincomplex.ligands]]
+#         all_resnames = set([a.GetName() for a in candidates1])
+
+#         # keep the water
+#         water = [o for o in pybel.ob.OBResidueIter(self.proteincomplex.OBMol) if o.GetResidueProperty(9)]
+#         # Filter out non-ligands
+#         # candidates2 = [a for a in candidates1 if is_lig(a.GetName()) and a.GetName() not in self.modresidues]
+#         # debuglog("%i ligand(s) after first filtering step." % len(candidates2))
+
+#         ############################################
+#         # Filtering by counting and artifacts list #
+#         ############################################
+#         # artifacts = []
+#         # unique_ligs = set(a.GetName() for a in candidates2)
+#         # for ulig in unique_ligs:
+#         #     # Discard if appearing 15 times or more and is possible artifact
+#         #     if ulig in config.biolip_list and [a.GetName() for a in candidates2].count(ulig) >= 15:
+#         #         artifacts.append(ulig)
+
+#         # selected_ligands = [a for a in candidates2 if a.GetName() not in artifacts]
+
+        
+#         return candidates1, all_resnames, water
+    
+
+#     def identify_kmers(self, residues):
+#         """Using the covalent linkage information, find out which fragments/subunits form a ligand."""
+
+#         # Remove all those not considered by ligands and pairings including alternate conformations
+#         ligdoubles = [[(link.id1, link.chain1, link.pos1),
+#                        (link.id2, link.chain2, link.pos2)] for link in
+#                       [c for c in self.covalent if c.id1 in self.lignames_kept and c.id2 in self.lignames_kept and
+#                        c.conf1 in ['A', ''] and c.conf2 in ['A', '']
+#                       and (c.id1, c.chain1, c.pos1) in residues and (c.id2, c.chain2, c.pos2) in residues]]
+#         kmers = cluster_doubles(ligdoubles)
+#         if not kmers:  # No ligand kmers, just normal independent ligands
+#             return [[residues[res]] for res in residues]
+
+#         else:
+#             # res_kmers contains clusters of covalently bound ligand residues (kmer ligands)
+#             res_kmers = [[residues[res] for res in kmer] for kmer in kmers]
+
+#             # In this case, add other ligands which are not part of a kmer
+#             in_kmer = []
+#             for res_kmer in res_kmers:
+#                 for res in res_kmer:
+#                     in_kmer.append((res.GetName(), res.GetChain(), res.GetNum()))
+#             for res in residues:
+#                 if res not in in_kmer:
+#                     newres = [residues[res], ]
+#                     res_kmers.append(newres)
+#             return res_kmers
+        
 
 class Mapper:
     """Provides functions for mapping atom IDs in the correct way"""
@@ -1165,12 +1427,22 @@ class PDBComplex:
         self.excluded = []  # Excluded ligands
         self.Mapper = Mapper()
         self.ligands = []
-
+        # self.protein = None
+        # my implementation of a pdb dataframe so that I can use it to
+        # get subsets of just the protein without using openbabel
+        # self.protein_df = None
+        # self.only_protein_df = None
+        # self.only_lig_df = None
+        
     def load_pdb(self, pdbpath):
         """Loads a pdb file with protein AND ligand(s), separates and prepares them."""
         self.sourcefiles['pdbcomplex.original'] = pdbpath
         self.sourcefiles['pdbcomplex'] = pdbpath
         self.information['pdbfixes'] = False
+
+        # add a biopandas df of the protein to this
+        # self.protein_df = PandasPDB().read_pdb(pdbpath)
+        
         pdbparser = PDBParser(pdbpath)  # Parse PDB file to find errors and get additonal data
         # #@todo Refactor and rename here
         self.Mapper.proteinmap = pdbparser.proteinmap
@@ -1193,6 +1465,7 @@ class PDBComplex:
 
         self.sourcefiles['filename'] = os.path.basename(self.sourcefiles['pdbcomplex'])
         self.protcomplex, self.filetype = read_pdb(self.sourcefiles['pdbcomplex'])
+
         message('PDB structure successfully read.\n')
 
         # Determine (temporary) PyMOL Name from Filename
@@ -1212,6 +1485,7 @@ class PDBComplex:
 
         # Extract and prepare ligands
         ligandfinder = LigandFinder(self.protcomplex, self.altconf, self.modres, self.covalent, self.Mapper)
+
         self.ligands = ligandfinder.ligands
         self.excluded = ligandfinder.excluded
 
@@ -1219,6 +1493,12 @@ class PDBComplex:
             message("Excluded molecules as ligands: %s\n" % ','.join([lig for lig in self.excluded]))
 
         self.resis = [obres for obres in pybel.ob.OBResidueIter(self.protcomplex.OBMol) if obres.GetResidueProperty(0)]
+
+        # get only the protein by deleting ligand residues
+        # self.protein = pybel.ob.OBMol(self.protcomplex.OBMol)
+        # for res in pybel.ob.OBResidueIter(self.protcomplex.OBMol):
+        #     if res.GetName() in [lig.longname for lig in self.ligands]:
+        #         self.protein.DeleteResidue(res)
 
         num_ligs = len(self.ligands)
         if num_ligs == 1:
@@ -1268,6 +1548,7 @@ class PDBComplex:
                     min_dist[bs_res_id] = (distance, whichrestype(r))
                 if distance <= config.BS_DIST and r not in bs_atoms_refined:
                     bs_atoms_refined.append(r)
+                    
         num_bs_atoms = len(bs_atoms_refined)
         message('Binding site atoms in vicinity (%.1f A max. dist: %i).\n' % (config.BS_DIST, num_bs_atoms),
                 indent=True)
@@ -1276,6 +1557,10 @@ class PDBComplex:
         pli_obj = PLInteraction(lig_obj, bs_obj, self)
         self.interaction_sets[ligand.mol.title] = pli_obj
 
+        # set the only protein and only ligand dfs
+        # self.only_protein_df = self.protein_df.df['ATOM'][not self.protein_df.df['ATOM']['residue_name'] in [lig.longname for lig in self.ligands]]
+        # self.only_ligand_df = self.protein_df.df['ATOM'][self.protein_df.df['ATOM']['residue_name'] in [lig.longname for lig in self.ligands]]
+        
     def extract_bs(self, cutoff, ligcentroid, resis):
         """Return list of ids from residues belonging to the binding site"""
         return [obres.GetIdx() for obres in resis if self.res_belongs_to_bs(obres, cutoff, ligcentroid)]
@@ -1290,8 +1575,8 @@ class PDBComplex:
 
     @property
     def output_path(self):
-        return self.output_path
+        return self._output_path
 
     @output_path.setter
     def output_path(self, path):
-        self.output_path = tilde_expansion(path)
+        self._output_path = osp.expanduser(path)

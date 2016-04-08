@@ -38,8 +38,6 @@ import pandas as pd
 def write_complexes_output(output, dir_path, output_base):
     for interaction, outputs_dict in output.iteritems():
         for output_type, df in outputs_dict.iteritems():
-            # DEBUG
-            print("OUTPUT_TYPE in here", output_type)
             if output_type in plipconfig.OUTPUT_STR_DICT.keys():
                 out_str = plipconfig.OUTPUT_STR_DICT[output_type]
                 df.to_csv("{0}_{1}_{2}.csv".format(output_base, interaction, out_str))
@@ -65,14 +63,9 @@ def complex_outputs(int_set, complex_id, interactions, output_types):
         outputs[i] = {}
         
         for out in output_types:
-            # set the output generator type
-            if out == plipconfig.LIG_INT_FREQ:
-                output_func = one
-            else:
-                raise ValueError("Not a valid output type")
 
             # put the output in the dict
-            outputs[i][out] = df_func(complex_id, int_set, output_func)
+            outputs[i][out] = df_func(complex_id, int_set, out)
 
     return outputs
 
@@ -98,18 +91,30 @@ def concat_complex_outputs(out1, out2):
 def one(something):
     return 1
 
-def hbond_df(complex_id, interaction_set, output_func):
+def hbond_df(complex_id, interaction_set, output_type):
     # if there are interactions continue otherwise return None
     df = None
+
+    # set the output generator type
+    if output_type == plipconfig.LIG_INT_FREQ:
+        output_func = one
+        df = lig_hbond_df(complex_id, interaction_set, output_func)
+    elif output_type == plipconfig.PROT_INT_FREQ:
+        output_func = one
+        df = prot_hbond_df(complex_id, interaction_set, output_func)        
+    else:
+        raise ValueError("Not a valid output type")
     
-    # make a dict of the atom indices (from the pdb I think) with
-    # the distance as the value along the single index
+    return df
+
+def lig_hbond_df(complex_id, interaction_set, output_func):
+    
     # initialize to no interaction
     d = {atom.idx : 0 for atom in interaction_set.ligand.all_atoms}
-    print("LIG DICT", d)
+
     # set the interaction to 1 if it exists
     if interaction_set.hbonds_pdon:
-        # ligand in acceptor
+        # ligand is acceptor, protein is donor
         for bond in interaction_set.hbonds_pdon:
             d[bond.a_orig_idx] = output_func(bond)
     if interaction_set.hbonds_ldon:
@@ -117,9 +122,49 @@ def hbond_df(complex_id, interaction_set, output_func):
         for bond in interaction_set.hbonds_ldon:
             d[bond.d_orig_idx] = output_func(bond)
     df = pd.DataFrame(d, index=[complex_id])
-    
+
     return df
 
+def prot_hbond_df(complex_id, interaction_set, output_func):
+    
+    # initialize to no interaction for Protein
+
+    # DEBUG
+    # print(dir(interaction_set.bindingsite.complex.protcomplex))
+    # the interaction_set.bindingsite.all_atoms contains only atoms
+    # that are selected out of the larger protein that are close to
+    # the ligand.
+
+    # the interaction_set.bindingsite.complex.protcomplex.atoms
+    # contains all atoms of the system, so if we know the ligands
+    # indexes we can take those out of the representation
+
+    # doesn't seem easy to get out which ones are water though so I
+    # will ignore them and remove them later if I want
+    # for atom in interaction_set.bindingsite.complex.protcomplex.atoms:
+    #     print(atom.OBAtom.GetType(), atom.OBAtom.GetTitle())
+
+    # This file is going to be way to big with the waters included, I
+    # will have to strip all of the waters out somehow.
+    
+    # get the index of all atoms that are not the ligand
+    ligand_idxs = [atom.idx for atom in interaction_set.ligand.all_atoms]
+    d = {atom.idx : 0 for atom in interaction_set.bindingsite.complex.protcomplex.atoms if not atom.idx in ligand_idxs}
+
+    if interaction_set.hbonds_ldon:
+        # protein is acceptor, ligand is donor
+        for bond in interaction_set.hbonds_ldon:
+            d[bond.a_orig_idx] = output_func(bond)
+            
+    if interaction_set.hbonds_pdon:
+        # protein is donor
+        for bond in interaction_set.hbonds_pdon:
+            d[bond.d_orig_idx] = output_func(bond)
+    df = pd.DataFrame(d, index=[complex_id])
+
+    return df
+
+            
 def hydrophobic_df(complex_id, interaction_set):
     df = None
     return df
