@@ -446,9 +446,9 @@ def lig_interactions(clust_format, interaction, output_dir, output_base, output_
 @click.option('--output-base', '-O', default=None, type=str, help="base filename to ouput results to")
 @click.option('--vis', '-Z', default=None, multiple=True, type=(str, str), help="produce a visualization of type VIS-TYPE with the data DATA-PATH; '-Z VIS-TYPE DATA-PATH")
 @click.option('--logp-cutoff', default=5.0, type=float, help="specify a upper cutoff value for logp visualizations")
-@click.argument('ligand-file', nargs=1, type=click.Path(exists=True))
 @click.argument('freq-data', nargs=1, type=click.Path(exists=True))
-def freq(fformat, output_dir, output_base, vis, logp_cutoff, ligand_file, freq_data):
+@click.argument('structure-files', nargs=-1, type=click.Path(exists=True))
+def freq(fformat, output_dir, output_base, vis, logp_cutoff, freq_data, structure_files):
     """Output (pdb) files with values set for visualization of
 interaction frequency.
 
@@ -475,7 +475,7 @@ interaction frequency.
     # making sure to change the columns to ints and not keep as strings
     freq_data = pd.read_csv(freq_data, index_col=0)
     freq_data.columns = [int(col) for col in freq_data.columns]
-    
+
     for vis_type, data in vis:
 
         # make requested visualization datas
@@ -507,27 +507,26 @@ interaction frequency.
             vis_data = np.negative(np.log( vis_data ))
             vis_data = vis_data.where( (vis_data < logp_cutoff) ).fillna(logp_cutoff)
 
-        # output results
-        if fformat == 'pdb':
-            # write file with vis_type string
-            outpath = "{0}_{1}.pdb".format(output_base,
-                                                    FREQ_OUTPUT_STR_DICT[vis_type])
+        for structure_file in structure_files:
+            # output results
+            if fformat == 'pdb':
+                # write file with vis_type string
+                outpath = "{0}_{1}_{2}.pdb".format(structure_file.split('.pdb')[0], output_base,
+                                                        FREQ_OUTPUT_STR_DICT[vis_type])
 
-            if output_dir:                
-                outpath = osp.join(output_dir, filename)
+                if output_dir:                
+                    outpath = osp.join(output_dir, filename)
 
-            # TODO biopandas might not update the pdb_text after you
-            # alter the df so I will output pdb from the pdb_replace_bfactor file for now
+                # TODO biopandas might not update the pdb_text after you
+                # alter the df so I will output pdb from the pdb_replace_bfactor file for now
 
-            # get the text with the b_factor column
-            # replaced
-            pdb_text = pdb_replace_bfactor(ligand_file, vis_data, outpath)
+                # get the text with the b_factor column
+                # replaced
+                pdb_text = pdb_replace_bfactor(structure_file, vis_data, outpath)
 
 
-            # with open(outpath, 'w') as fw:
-            #     fw.write(pdb_text)
-
-            
+                # with open(outpath, 'w') as fw:
+                #     fw.write(pdb_text)
 
     return None
 
